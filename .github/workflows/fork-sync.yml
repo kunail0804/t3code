@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   sync:
@@ -32,3 +33,72 @@ jobs:
           # --ff-only : si main a divergé, le job échoue au lieu d'écraser.
           git merge --ff-only upstream/main
           git push origin main --tags
+
+      # Le exit 0 de l'étape précédente sort de l'étape, pas du job : cette
+      # étape tourne aussi quand main est déjà à jour. Voulu — la release peut
+      # manquer même sans nouveaux commits (oubli de publication, échec local).
+      - name: Signale les versions sans release exploitable
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="$(node -p "require('./apps/server/package.json').version")"
+          TAG="v$VERSION"
+
+          # Exploitable = ni brouillon ni prerelease, et porte les deux assets
+          # que electron-updater vient chercher. `gh release view` reussit sur
+          # une release brouillon ou sans assets : un `gh release create`
+          # interrompu pendant l'upload laisserait sinon la surveillance
+          # se taire pour toujours.
+          PROBLEM=""
+          if INFO="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,assets 2>/dev/null)"; then
+            DRAFT="$(echo "$INFO" | jq -r '.isDraft')"
+            PRERELEASE="$(echo "$INFO" | jq -r '.isPrerelease')"
+            HAS_APPIMAGE="$(echo "$INFO" | jq -r --arg a "T3-Code-$VERSION-x86_64.AppImage" '[.assets[].name] | index($a) != null')"
+            HAS_YML="$(echo "$INFO" | jq -r '[.assets[].name] | index("latest-linux.yml") != null')"
+            if [ "$DRAFT" = "true" ]; then
+              PROBLEM="elle est en brouillon, et l'updater ne voit pas les brouillons"
+            elif [ "$PRERELEASE" = "true" ]; then
+              PROBLEM="elle est marquee prerelease, et l'updater (canal latest) ne la voit pas"
+            elif [ "$HAS_APPIMAGE" != "true" ] || [ "$HAS_YML" != "true" ]; then
+              PRESENT="$(echo "$INFO" | jq -r '[.assets[].name] | if length == 0 then "aucun" else join(", ") end')"
+              PROBLEM="elle existe mais il lui manque des assets (attendus : T3-Code-$VERSION-x86_64.AppImage et latest-linux.yml ; presents : $PRESENT). Une release a moitie creee est une release cassee : l'updater telechargerait un 404"
+            fi
+          else
+            PROBLEM="elle n'existe pas"
+          fi
+
+          if [ -z "$PROBLEM" ]; then
+            echo "release $TAG exploitable, rien à faire"
+            exit 0
+          fi
+
+          # Titre stable et contenant la version : une seule issue par version,
+          # jamais un doublon à chaque exécution du cron, quel que soit le
+          # problème constaté.
+          TITLE="Release $TAG absente ou incomplete : mise à jour automatique en attente"
+          COUNT="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 500 \
+            --json title --jq "[.[] | select(.title == \"$TITLE\")] | length")"
+
+          if [ "$COUNT" -ne 0 ]; then
+            echo "une issue ouverte signale déjà $TAG"
+            exit 0
+          fi
+
+          cat > /tmp/fork-release-issue.md <<'EOF'
+          La release `v$VERSION` ne satisfait pas les conditions de la mise à jour automatique du fork : $PROBLEM.
+
+          Depuis que l'updater des AppImages du fork pointe sur les releases du fork, il ne voit plus celles d'upstream : sans release exploitable du fork, il ne propose plus aucune mise à jour, et on reste sur une vieille build en croyant être à jour.
+
+          Pour produire la release, depuis une machine de dev :
+
+          1. `./fork/sync.sh` — resynchroniser sur upstream
+          2. `./fork/build-linux.sh` — construire l'AppImage et ses métadonnées de mise à jour
+          3. `./fork/release.sh` — publier la release GitHub
+
+          Ce workflow ne construit pas d'AppImage en CI : la publication est une étape locale et volontaire.
+          EOF
+          sed -i -e "s|\$VERSION|$VERSION|g" -e "s|\$PROBLEM|$PROBLEM|g" /tmp/fork-release-issue.md
+
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "$TITLE" \
+            --body-file /tmp/fork-release-issue.md
