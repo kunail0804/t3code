@@ -163,4 +163,28 @@ describe("DesktopEnvironment", () => {
       );
     }),
   );
+
+  it.effect("keeps upstream's Linux identity when no override is set", () =>
+    Effect.gen(function* () {
+      const environment = yield* makeEnvironment({ platform: "linux", isPackaged: true });
+
+      assert.equal(environment.linuxDesktopEntryName, "t3code.desktop");
+      assert.equal(environment.linuxWmClass, "t3code");
+    }),
+  );
+
+  // A fork installed beside the official build must be a distinct application
+  // to the desktop shell, which groups windows by this identity. Without the
+  // override both builds claim "t3code" and the shell merges them.
+  it.effect("takes the Linux identity from T3CODE_DESKTOP_LINUX_APP_ID", () =>
+    Effect.gen(function* () {
+      const environment = yield* makeEnvironment(
+        { platform: "linux", isPackaged: true },
+        { T3CODE_DESKTOP_LINUX_APP_ID: " t3code-fork " },
+      );
+
+      assert.equal(environment.linuxDesktopEntryName, "t3code-fork.desktop");
+      assert.equal(environment.linuxWmClass, "t3code-fork");
+    }),
+  );
 });

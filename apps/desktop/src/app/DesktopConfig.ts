@@ -39,6 +39,10 @@ export const DesktopConfig = Config.all({
   t3Home: trimmedString("T3CODE_HOME"),
   devServerUrl: Config.url("VITE_DEV_SERVER_URL").pipe(Config.option),
   appUserModelIdOverride: trimmedString("T3CODE_DESKTOP_APP_USER_MODEL_ID"),
+  // Linux counterpart of appUserModelIdOverride. A second build installed
+  // beside the official one otherwise claims the same desktop entry and WM
+  // class, so the compositor treats both as one application.
+  linuxAppIdOverride: trimmedString("T3CODE_DESKTOP_LINUX_APP_ID"),
   devRemoteT3ServerEntryPath: trimmedString("T3CODE_DEV_REMOTE_T3_SERVER_ENTRY_PATH"),
   configuredBackendPort: Config.port("T3CODE_PORT").pipe(Config.option),
   commitHashOverride: trimmedString("T3CODE_COMMIT_HASH"),

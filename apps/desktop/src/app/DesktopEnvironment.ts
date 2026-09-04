@@ -180,6 +180,14 @@ const make = Effect.fn("desktop.environment.make")(function* (
   });
   const userDataDirName = isDevelopment ? "t3code-dev" : "t3code";
   const legacyUserDataDirName = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
+  // Identity the Linux desktop shell groups windows by: the .desktop entry
+  // Electron reports through setDesktopName, and the matching WM class. A
+  // second build installed beside the official one must override it, or the
+  // compositor cannot tell the two apart. Empty override keeps upstream's
+  // value, so the official build is unaffected.
+  const linuxAppId = Option.getOrElse(config.linuxAppIdOverride, () =>
+    isDevelopment ? "t3code-dev" : "t3code",
+  );
   const linuxApplicationsDir = path.join(
     Option.getOrElse(config.xdgDataHome, () => path.join(homeDirectory, ".local", "share")),
     "applications",
@@ -226,8 +234,8 @@ const make = Effect.fn("desktop.environment.make")(function* (
     appUserModelId: Option.getOrElse(config.appUserModelIdOverride, () =>
       isDevelopment ? "com.t3tools.t3code.dev" : "com.t3tools.t3code",
     ),
-    linuxDesktopEntryName: isDevelopment ? "t3code-dev.desktop" : "t3code.desktop",
-    linuxWmClass: isDevelopment ? "t3code-dev" : "t3code",
+    linuxDesktopEntryName: `${linuxAppId}.desktop`,
+    linuxWmClass: linuxAppId,
     linuxApplicationsDir,
     appImagePath: config.appImagePath,
     userDataDirName,
