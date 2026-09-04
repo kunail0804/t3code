@@ -14,6 +14,7 @@ import {
   resolveDesktopStateDir,
   type JoinPath,
 } from "./DesktopStatePaths.ts";
+import { resolveForkLinuxIdentity } from "./linuxAppId.fork.ts";
 
 interface EarlyDesktopSettingsInput {
   readonly env: NodeJS.ProcessEnv;
@@ -86,10 +87,15 @@ export function resolveEarlyLinuxElectronOptions(
 ): EarlyLinuxElectronOptions {
   const preference = resolveEarlyLinuxPasswordStorePreference(input);
   const isDevelopment = isDevelopmentEnvironment(input.env);
+  const linuxIdentity = resolveForkLinuxIdentity({
+    override: input.env.T3CODE_DESKTOP_LINUX_APP_ID,
+    upstreamDesktopEntryName: resolveLinuxDesktopEntryName(isDevelopment),
+    upstreamWmClass: isDevelopment ? "t3code-dev" : "t3code",
+  });
   return {
     isDevelopment,
-    linuxWmClass: isDevelopment ? "t3code-dev" : "t3code",
-    linuxDesktopEntryName: resolveLinuxDesktopEntryName(isDevelopment),
+    linuxWmClass: linuxIdentity.linuxWmClass,
+    linuxDesktopEntryName: linuxIdentity.linuxDesktopEntryName,
     passwordStore: resolveLinuxPasswordStoreSwitch({
       preference,
       env: input.env,
