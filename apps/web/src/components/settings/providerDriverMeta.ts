@@ -82,6 +82,20 @@ export const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = 
     icon: AntigravityIcon,
     settingsSchema: AntigravitySettings,
   },
+  // Fork-only drivers: OpenCode scoped to a single upstream vendor, so they
+  // reuse the OpenCode settings schema and its icon.
+  {
+    value: ProviderDriverKind.make("openrouter"),
+    label: "OpenRouter",
+    icon: OpenCodeIcon,
+    settingsSchema: OpenCodeSettings,
+  },
+  {
+    value: ProviderDriverKind.make("ollama"),
+    label: "Ollama",
+    icon: OpenCodeIcon,
+    settingsSchema: OpenCodeSettings,
+  },
 ];
 
 export const PROVIDER_CLIENT_DEFINITION_BY_VALUE: Partial<

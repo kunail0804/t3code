@@ -26,6 +26,11 @@ import { CursorDriver, type CursorDriverEnv } from "./Drivers/CursorDriver.ts";
 import { GrokDriver, type GrokDriverEnv } from "./Drivers/GrokDriver.ts";
 import { OpenCodeDriver, type OpenCodeDriverEnv } from "./Drivers/OpenCodeDriver.ts";
 import { AntigravityDriver, type AntigravityDriverEnv } from "./Drivers/AntigravityDriver.ts";
+import {
+  OllamaDriver,
+  OpenRouterDriver,
+  type ScopedOpenCodeDriverEnv,
+} from "./Drivers/scopedOpenCode.fork.ts";
 import type { AnyProviderDriver } from "./ProviderDriver.ts";
 
 /**
@@ -39,7 +44,8 @@ export type BuiltInDriversEnv =
   | CursorDriverEnv
   | GrokDriverEnv
   | OpenCodeDriverEnv
-  | AntigravityDriverEnv;
+  | AntigravityDriverEnv
+  | ScopedOpenCodeDriverEnv;
 
 /**
  * Ordered list of built-in drivers. Order matters only for tie-breaking in
@@ -53,4 +59,9 @@ export const BUILT_IN_DRIVERS: ReadonlyArray<AnyProviderDriver<BuiltInDriversEnv
   GrokDriver,
   OpenCodeDriver,
   AntigravityDriver,
+  // Fork-only drivers: OpenCode scoped to a single upstream vendor. The
+  // fork rule keeps them additive, so they sit in a `.fork.ts` sibling of
+  // `OpenCodeDriver.ts` and ship after the first-party list.
+  OpenRouterDriver,
+  OllamaDriver,
 ];
