@@ -25,6 +25,14 @@ T3CODE_DESKTOP_UPDATE_REPOSITORY="${T3CODE_DESKTOP_UPDATE_REPOSITORY:-kunail0804
 export T3CODE_DESKTOP_UPDATE_REPOSITORY
 info "Depot de mise a jour : $T3CODE_DESKTOP_UPDATE_REPOSITORY"
 
+# Identite Linux de la build. Nomme le binaire empaquete et le StartupWMClass
+# de son entree .desktop. Sans ca le binaire s'appelle "t3code" comme celui de
+# l'app officielle, et le shell de bureau resout les fenetres du fork vers
+# l'entree officielle. Le lanceur pose la meme valeur a l'execution.
+T3CODE_DESKTOP_LINUX_APP_ID="${T3CODE_DESKTOP_LINUX_APP_ID:-t3code-fork}"
+export T3CODE_DESKTOP_LINUX_APP_ID
+info "Identite Linux : $T3CODE_DESKTOP_LINUX_APP_ID"
+
 RUSTC_VERSION="$(rustc --version | awk '{print $2}')"
 info "rustc $RUSTC_VERSION"
 case "$RUSTC_VERSION" in
