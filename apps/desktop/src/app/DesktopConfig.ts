@@ -43,6 +43,8 @@ export const DesktopConfig = Config.all({
   // beside the official one otherwise claims the same desktop entry and WM
   // class, so the compositor treats both as one application.
   linuxAppIdOverride: trimmedString("T3CODE_DESKTOP_LINUX_APP_ID"),
+  // Name shown in the window title, the about panel and the URL-handler entry.
+  displayNameOverride: trimmedString("T3CODE_DESKTOP_DISPLAY_NAME"),
   devRemoteT3ServerEntryPath: trimmedString("T3CODE_DEV_REMOTE_T3_SERVER_ENTRY_PATH"),
   configuredBackendPort: Config.port("T3CODE_PORT").pipe(Config.option),
   commitHashOverride: trimmedString("T3CODE_COMMIT_HASH"),

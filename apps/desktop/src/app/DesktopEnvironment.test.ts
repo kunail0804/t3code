@@ -187,4 +187,30 @@ describe("DesktopEnvironment", () => {
       assert.equal(environment.linuxWmClass, "t3code-fork");
     }),
   );
+
+  it.effect("keeps upstream's display name when no override is set", () =>
+    Effect.gen(function* () {
+      const environment = yield* makeEnvironment({ isPackaged: true });
+
+      assert.equal(environment.displayName, "T3 Code (Alpha)");
+      assert.equal(environment.branding.displayName, "T3 Code (Alpha)");
+    }),
+  );
+
+  // Window title, about panel and URL-handler entry all read this name. A fork
+  // sharing it with the official build is indistinguishable on screen.
+  it.effect("takes the display name from T3CODE_DESKTOP_DISPLAY_NAME", () =>
+    Effect.gen(function* () {
+      const environment = yield* makeEnvironment(
+        { isPackaged: true },
+        { T3CODE_DESKTOP_DISPLAY_NAME: " T3 Code (fork) " },
+      );
+
+      assert.equal(environment.displayName, "T3 Code (fork)");
+      // Branding travels to the web UI over IPC: it must not disagree.
+      assert.equal(environment.branding.displayName, "T3 Code (fork)");
+      // The stage label is a closed union shared over the wire, left alone.
+      assert.equal(environment.branding.stageLabel, "Alpha");
+    }),
+  );
 });

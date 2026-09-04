@@ -167,11 +167,17 @@ const make = Effect.fn("desktop.environment.make")(function* (
     input.isPackaged && input.platform === "win32"
       ? path.join(input.resourcesPath, "server.asar")
       : appRoot;
-  const branding = resolveDesktopAppBranding({
+  // A build installed beside the official one shares its display name, so the
+  // window title, the about panel and the URL-handler entry are identical and
+  // nothing tells the two apart on screen. Only the name is overridden:
+  // stageLabel stays a closed union shared over IPC. Empty override keeps
+  // upstream's name, so the official build is unaffected.
+  const baseBranding = resolveDesktopAppBranding({
     isDevelopment,
     appVersion: input.appVersion,
   });
-  const displayName = branding.displayName;
+  const displayName = Option.getOrElse(config.displayNameOverride, () => baseBranding.displayName);
+  const branding: DesktopAppBranding = { ...baseBranding, displayName };
   const stateDir = resolveDesktopStateDir({
     baseDir,
     isDevelopment,
