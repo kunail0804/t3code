@@ -323,6 +323,57 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     }),
   );
 
+  it.effect("keeps upstream's Linux executable name when no override is set", () =>
+    Effect.gen(function* () {
+      const config = yield* createBuildConfig(
+        "linux",
+        "AppImage",
+        "0.0.33",
+        false,
+        false,
+        undefined,
+        undefined,
+      );
+
+      const linux = config.linux as {
+        executableName: string;
+        desktop: { entry: Record<string, string> };
+      };
+      assert.equal(linux.executableName, "t3code");
+      assert.equal(linux.desktop.entry.StartupWMClass, "t3code");
+    }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
+  );
+
+  // Desktop shells resolve a window through its WM class and its process name.
+  // A build installed beside the official one shares both unless overridden,
+  // so its windows are grouped under the official entry.
+  it.effect("takes the Linux executable name from T3CODE_DESKTOP_LINUX_APP_ID", () =>
+    Effect.gen(function* () {
+      const config = yield* createBuildConfig(
+        "linux",
+        "AppImage",
+        "0.0.33",
+        false,
+        false,
+        undefined,
+        undefined,
+      );
+
+      const linux = config.linux as {
+        executableName: string;
+        desktop: { entry: Record<string, string> };
+      };
+      assert.equal(linux.executableName, "t3code-fork");
+      assert.equal(linux.desktop.entry.StartupWMClass, "t3code-fork");
+    }).pipe(
+      Effect.provide(
+        ConfigProvider.layer(
+          ConfigProvider.fromEnv({ env: { T3CODE_DESKTOP_LINUX_APP_ID: " t3code-fork " } }),
+        ),
+      ),
+    ),
+  );
+
   it.effect("omits update feeds for pull request preview builds", () =>
     Effect.gen(function* () {
       const preview = yield* createBuildConfig(

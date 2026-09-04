@@ -2666,9 +2666,17 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   }
 
   if (platform === "linux") {
+    // Desktop shells identify a window by its WM class *and* by the process
+    // name, which is the packaged executable's name. A build installed beside
+    // the official one must override both, or the shell resolves its windows
+    // back to the official .desktop entry. Same variable the packaged app
+    // reads at runtime, so one value covers build and launch. Empty keeps
+    // upstream's name.
+    const linuxAppId = yield* Config.string("T3CODE_DESKTOP_LINUX_APP_ID").pipe(Config.option);
+    const linuxExecutableName = Option.getOrUndefined(linuxAppId)?.trim() || "t3code";
     buildConfig.linux = {
       target: [target],
-      executableName: "t3code",
+      executableName: linuxExecutableName,
       icon: "icons",
       category: "Development",
       // electron-builder turns these into MimeType=x-scheme-handler/<scheme>;
@@ -2682,7 +2690,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       ],
       desktop: {
         entry: {
-          StartupWMClass: "t3code",
+          StartupWMClass: linuxExecutableName,
         },
       },
     };
