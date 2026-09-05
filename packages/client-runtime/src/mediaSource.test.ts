@@ -138,4 +138,29 @@ describe("resolveMediaSource", () => {
       resource: { _tag: "media-file", threadId, path },
     });
   });
+
+  describe("audio", () => {
+    it("returns null so a cited audio file keeps its ordinary link behavior", () => {
+      expect(resolveMediaSource("https://cdn.example.com/voix.mp3", { threadId })).toBeNull();
+      expect(resolveMediaSource("/repo/voix.mp3", { threadId, workspaceRoot: "/repo" })).toBeNull();
+      expect(resolveMediaSource("data:audio/mpeg;base64,QUJD", { threadId })).toBeNull();
+    });
+
+    it("still resolves video and image sources the way it did before audio", () => {
+      expect(resolveMediaSource("https://cdn.example.com/clip.mp4", { threadId })).toMatchObject({
+        kind: "video",
+        mimeType: "video/mp4",
+        access: "direct",
+      });
+      expect(resolveMediaSource("/repo/photo.png", { threadId, workspaceRoot: "/repo" })).toEqual({
+        kind: "image",
+        mimeType: "image/png",
+        name: "photo.png",
+        reference: { kind: "file", path: "/repo/photo.png", relativePath: "photo.png" },
+        srcFragment: "",
+        access: "environment",
+        resource: { _tag: "media-file", threadId, path: "/repo/photo.png" },
+      });
+    });
+  });
 });

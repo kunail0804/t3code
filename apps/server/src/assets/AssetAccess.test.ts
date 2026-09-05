@@ -627,6 +627,37 @@ describe("AssetAccess", () => {
     }).pipe(Effect.provide(testLayer)),
   );
 
+  it.effect("serves audio attachments inline", () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const attachmentId = "thread-1-00000000-0000-4000-8000-000000000001-mp3";
+      const attachmentPath = path.join(config.attachmentsDir, `${attachmentId}.mp3`);
+      yield* fileSystem.makeDirectory(config.attachmentsDir, { recursive: true });
+      yield* fileSystem.writeFile(attachmentPath, new Uint8Array([1, 2, 3]));
+
+      const result = yield* issueAssetUrl({
+        resource: {
+          _tag: "attachment",
+          attachmentId,
+          fileName: "voice-memo.mp3",
+          mimeType: "audio/mpeg; bitrate=128000",
+        },
+      });
+      const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+      const separatorIndex = suffix.indexOf("/");
+
+      expect(
+        yield* resolveAsset(suffix.slice(0, separatorIndex), suffix.slice(separatorIndex + 1)),
+      ).toEqual({
+        kind: "file",
+        path: attachmentPath,
+        fileName: "voice-memo.mp3",
+        mimeType: "audio/mpeg",
+      });
+    }).pipe(Effect.provide(testLayer)),
+  );
   it.effect("keeps inline requests for other attachment types as downloads", () =>
     Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;
@@ -643,6 +674,34 @@ describe("AssetAccess", () => {
           attachmentId,
           fileName: "archive.zip",
           mimeType: "text/html",
+          disposition: "inline",
+        },
+      });
+      const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+      const separatorIndex = suffix.indexOf("/");
+
+      expect(
+        yield* resolveAsset(suffix.slice(0, separatorIndex), suffix.slice(separatorIndex + 1)),
+      ).toMatchObject({ kind: "file", path: attachmentPath, download: true });
+    }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect("keeps generic archives as downloads even when a viewer requests inline", () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const attachmentId = "thread-1-00000000-0000-4000-8000-000000000003-zip";
+      const attachmentPath = path.join(config.attachmentsDir, `${attachmentId}.zip`);
+      yield* fileSystem.makeDirectory(config.attachmentsDir, { recursive: true });
+      yield* fileSystem.writeFile(attachmentPath, new Uint8Array([1, 2, 3]));
+
+      const result = yield* issueAssetUrl({
+        resource: {
+          _tag: "attachment",
+          attachmentId,
+          fileName: "archive.zip",
+          mimeType: "application/zip",
           disposition: "inline",
         },
       });

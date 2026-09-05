@@ -271,6 +271,37 @@ describe("video asset byte ranges", () => {
   );
 });
 
+describe("audio asset byte ranges", () => {
+  it.effect("answers audio range requests like video and keeps other types on full responses", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-audio-range-" });
+      const file = path.join(directory, "voix.mp3");
+      yield* fs.writeFileString(file, "0123456789");
+      const audio = { path: file, mimeType: "audio/mpeg" };
+      const ranged = HttpServerResponse.toWeb(yield* assetFileResponse(audio, "bytes=0-3"));
+      expect(ranged.status).toBe(206);
+      expect(ranged.headers.get("accept-ranges")).toBe("bytes");
+      expect(ranged.headers.get("content-range")).toBe("bytes 0-3/10");
+      expect(ranged.headers.get("content-length")).toBe("4");
+      expect(yield* Effect.promise(() => ranged.text())).toBe("0123");
+
+      const full = HttpServerResponse.toWeb(yield* assetFileResponse(audio));
+      expect(full.status).toBe(200);
+      expect(full.headers.get("accept-ranges")).toBe("bytes");
+      expect(yield* Effect.promise(() => full.text())).toBe("0123456789");
+
+      const document = HttpServerResponse.toWeb(
+        yield* assetFileResponse({ path: file, mimeType: "application/pdf" }, "bytes=0-3"),
+      );
+      expect(document.status).toBe(200);
+      expect(document.headers.has("accept-ranges")).toBe(false);
+      expect(yield* Effect.promise(() => document.text())).toBe("0123456789");
+    }).pipe(Effect.provide(fileResponseLayer)),
+  );
+});
+
 describe("http dev routing", () => {
   it("treats localhost and loopback addresses as local", () => {
     expect(isLoopbackHostname("127.0.0.1")).toBe(true);
@@ -323,6 +354,22 @@ describe("assetResponseHeaders", () => {
       "Content-Type": "video/mp4",
       "X-Content-Type-Options": "nosniff",
     });
+  });
+
+  it("serves inline audio with its declared mime type", () => {
+    expect(assetResponseHeaders("/attachments/demo.bin", { mimeType: "audio/mpeg" })).toEqual({
+      "Cache-Control": "private, max-age=3600",
+      "Content-Type": "audio/mpeg",
+      "X-Content-Type-Options": "nosniff",
+    });
+  });
+
+  it("keeps non-media inline requests away from the inline mime types", () => {
+    for (const mimeType of ["application/zip", "application/octet-stream", "text/plain"]) {
+      const headers = assetResponseHeaders("/attachments/upload.bin", { mimeType });
+      expect(headers).not.toHaveProperty("Content-Type");
+      expect(headers).not.toHaveProperty("Content-Disposition");
+    }
   });
   it("serves inline attachment documents with their declared mime type", () => {
     expect(

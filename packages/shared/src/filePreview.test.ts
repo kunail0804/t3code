@@ -60,4 +60,20 @@ describe("media path parsing", () => {
     expect(mediaKindFromPath(source)).toBe(kind);
     expect(isWorkspaceVideoPreviewPath(source)).toBe(literalVideo);
   });
+
+  it.each([
+    ["voice-memo.mp3", "audio"],
+    ["https://cdn.example/voice.mp3?download=1#t=2", "audio"],
+    ["data:audio/mpeg;base64,QUJD", "audio"],
+  ])("classifies the audio path %s", (source, kind) => {
+    expect(mediaKindFromPath(source)).toBe(kind);
+  });
+
+  it("keeps the existing image and video kinds alongside audio", () => {
+    expect(mediaKindFromPath("/tmp/song.mp3")).toBe("audio");
+    expect(mediaKindFromPath("/tmp/clip.mp4")).toBe("video");
+    expect(mediaKindFromPath("/tmp/photo.png")).toBe("image");
+    expect(mediaKindFromPath("/tmp/notes.txt")).toBeNull();
+    expect(mediaKindFromPath("/tmp/archive.ogv")).toBe("video");
+  });
 });

@@ -396,6 +396,48 @@ describe("orderedListGutterStyle", () => {
   });
 });
 
+describe("ChatMarkdown audio images", () => {
+  it.each([true, false])(
+    "renders a cited mp3 as an audio player with parseRawHtml=%s",
+    (parseRawHtml) => {
+      const html = renderToStaticMarkup(
+        <ChatMarkdown
+          cwd="/tmp/project"
+          text={"![voice memo](https://cdn.example/voice-memo.mp3)"}
+          parseRawHtml={parseRawHtml}
+        />,
+      );
+
+      expect(html).toContain("<audio");
+      expect(html).toContain("voice-memo.mp3");
+      expect(html).not.toContain("<video");
+      expect(html).not.toContain("<img");
+    },
+  );
+
+  it("keeps video and image citations on their existing branches", () => {
+    const videoHtml = renderToStaticMarkup(
+      <ChatMarkdown cwd="/tmp/project" text={"![clip](https://cdn.example/clip.mp4)"} />,
+    );
+    expect(videoHtml).toContain("<video");
+
+    const imageHtml = renderToStaticMarkup(
+      <ChatMarkdown cwd="/tmp/project" text={"![photo](https://cdn.example/photo.png)"} />,
+    );
+    expect(imageHtml).toContain("<img");
+    expect(imageHtml).not.toContain("<audio");
+  });
+
+  it("labels a workspace audio that cannot resolve as audio, not image", () => {
+    const html = renderToStaticMarkup(
+      <ChatMarkdown cwd="/tmp/project" text={"![voix](voix.mp3)"} />,
+    );
+
+    expect(html).toContain("Audio unavailable");
+    expect(html).not.toContain("Image unavailable");
+  });
+});
+
 describe("ChatMarkdown Windows file links", () => {
   const environmentId = EnvironmentId.make("env-windows");
 

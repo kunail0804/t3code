@@ -1,3 +1,4 @@
+import { audioMimeType } from "./audio.fork.ts";
 import { videoMimeType } from "./video.ts";
 
 export const WORKSPACE_BROWSER_PREVIEW_EXTENSIONS = [".htm", ".html", ".pdf"] as const;
@@ -35,7 +36,8 @@ export function mediaMimeTypeFromExtension(extension: string): string | null {
   if (!/^\.[a-z0-9]+$/i.test(extension)) return null;
   return (
     IMAGE_MIME_TYPE_BY_EXTENSION.get(extension.toLowerCase()) ??
-    videoMimeType({ name: `media${extension}`, mimeType: "" })
+    videoMimeType({ name: `media${extension}`, mimeType: "" }) ??
+    audioMimeType({ name: `media${extension}`, mimeType: "" })
   );
 }
 
@@ -53,7 +55,7 @@ export function hostPreviewMimeTypeFromExtension(extension: string): string | nu
 export function mediaMimeType(path: string): string | null {
   const trimmed = path.trim();
   const source = trimmed.startsWith("<") && trimmed.endsWith(">") ? trimmed.slice(1, -1) : trimmed;
-  const dataMimeType = /^data:((?:image|video)\/[\w.+-]+)[;,]/i.exec(source)?.[1];
+  const dataMimeType = /^data:((?:image|audio|video)\/[\w.+-]+)[;,]/i.exec(source)?.[1];
   if (dataMimeType) return dataMimeType.toLowerCase();
 
   let sourcePath = source.split(/[?#]/, 1)[0] ?? "";
@@ -74,10 +76,11 @@ export function mediaMimeType(path: string): string | null {
   return extensionIndex < 0 ? null : mediaMimeTypeFromExtension(basename.slice(extensionIndex));
 }
 
-export function mediaKindFromPath(path: string): "image" | "video" | null {
+export function mediaKindFromPath(path: string): "image" | "audio" | "video" | null {
   const mimeType = mediaMimeType(path);
   if (mimeType === null) return null;
-  return mimeType.startsWith("video/") ? "video" : "image";
+  if (mimeType.startsWith("video/")) return "video";
+  return mimeType.startsWith("audio/") ? "audio" : "image";
 }
 
 function hasPreviewExtension(path: string, extensions: ReadonlyArray<string>): boolean {

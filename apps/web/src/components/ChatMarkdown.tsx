@@ -86,6 +86,7 @@ import {
   type ExpandedImagePreview,
 } from "./chat/ExpandedImagePreview";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
+import { ChatMarkdownAudio } from "./ChatMarkdownAudio.fork";
 import { MediaVideoPlayer } from "./media/MediaVideoPlayer";
 import { MediaActions, type MediaActionSource } from "./media/MediaActions";
 import { resolveProtocolRelativeMediaUrl } from "./media/mediaContent";
@@ -1240,10 +1241,15 @@ function expandableMarkdownImageProps(
 function ChatMarkdownImageFallback(props: {
   readonly alt: string;
   readonly copyMarkdown?: string | undefined;
-  readonly kind?: "image" | "video";
+  readonly kind?: "image" | "audio" | "video";
   readonly actionsSource?: MediaActionSource;
 }) {
-  const label = props.kind === "video" ? "Video unavailable" : "Image unavailable";
+  const label =
+    props.kind === "video"
+      ? "Video unavailable"
+      : props.kind === "audio"
+        ? "Audio unavailable"
+        : "Image unavailable";
   const content = (
     <span
       data-markdown-copy={props.copyMarkdown}
@@ -1307,7 +1313,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
     AssetResource,
     { readonly _tag: "attachment" | "workspace-file" | "media-file" }
   >;
-  readonly kind?: "image" | "video";
+  readonly kind?: "image" | "audio" | "video";
   readonly alt: string;
   readonly copyMarkdown?: string;
   readonly srcFragment?: string;
@@ -1355,6 +1361,20 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
         alt={props.alt}
         copyMarkdown={props.copyMarkdown}
         style={props.style}
+        mediaIdentity={JSON.stringify([props.environmentId, props.resource, props.srcFragment])}
+        onRetry={refreshAssetUrl}
+        actionsSource={actionsSource}
+      />
+    );
+  }
+
+  if (props.kind === "audio") {
+    return (
+      <ChatMarkdownAudio
+        src={src}
+        sourceFailed={assetUrl._tag === "Failure"}
+        alt={props.alt}
+        copyMarkdown={props.copyMarkdown}
         mediaIdentity={JSON.stringify([props.environmentId, props.resource, props.srcFragment])}
         onRetry={refreshAssetUrl}
         actionsSource={actionsSource}
@@ -2645,6 +2665,18 @@ function ChatMarkdown({
           if (kind === "video") {
             return (
               <ChatMarkdownVideo
+                src={mediaSrc}
+                alt={altText}
+                copyMarkdown={copyMarkdown}
+                originalUrl={originalUrl}
+                style={authoredSizeStyle}
+                actionsSource={actionsSource}
+              />
+            );
+          }
+          if (kind === "audio") {
+            return (
+              <ChatMarkdownAudio
                 src={mediaSrc}
                 alt={altText}
                 copyMarkdown={copyMarkdown}

@@ -316,4 +316,21 @@ describe("ChatMarkdown workspace images", () => {
     expect(html).toContain("max-h-[30rem]");
     expect(html).not.toContain("Image unavailable");
   });
+
+  it("renders a cited workspace audio through the signed asset URL, not an image", () => {
+    const html = render("![voix](voix.mp3)");
+
+    expect(testState.resources).toEqual([
+      {
+        _tag: "media-file",
+        threadId: threadRef.threadId,
+        path: "C:\\Users\\shawn\\project\\voix.mp3",
+      },
+    ]);
+    expect(html).toContain("<audio");
+    expect(html).toContain('src="https://signed.test/workspace-image.svg"');
+    expect(html).toContain("controls");
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("Image unavailable");
+  });
 });

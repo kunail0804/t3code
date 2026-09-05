@@ -52,7 +52,7 @@ const SIGNING_SECRET_NAME = "asset-access-signing-key";
 const ASSET_TOKEN_TTL_MS = 60 * 60 * 1000;
 const PROJECT_FAVICON_TOKEN_BUCKET_MS = 30 * 60 * 1000;
 const PROJECT_FAVICON_VERSION_PREFIX = "v";
-const INLINE_VIDEO_MIME_TYPE_PATTERN = /^video\/[\w!#$&^.+-]+$/i;
+const INLINE_MEDIA_MIME_TYPE_PATTERN = /^(?:audio|video)\/[\w!#$&^.+-]+$/i;
 // Extensions a document viewer may request inline. The extension comes from
 // the attachment id the server assigned, never from the client's mime type.
 const INLINE_DOCUMENT_EXTENSIONS = new Set(["pdf", "html", "htm"]);
@@ -377,13 +377,14 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
         });
       }
       // Generic files carry their extension inside the attachment id (that
-      // shape resolves the on-disk path); images do not. Videos and images
-      // render inline. Other generic files download, unless a document viewer
-      // asked for inline and the stored extension is one a browser can show.
+      // shape resolves the on-disk path); images do not. Videos, images, and
+      // audio render inline. Other generic files download, unless a document
+      // viewer asked for inline and the stored extension is one a browser can
+      // show.
       const extension = parseAttachmentFileExtension(input.resource.attachmentId);
       const isGenericFile = extension !== null;
-      const videoMimeType = input.resource.mimeType?.split(";", 1)[0]?.trim() ?? "";
-      const isVideo = INLINE_VIDEO_MIME_TYPE_PATTERN.test(videoMimeType);
+      const inlineMediaMimeType = input.resource.mimeType?.split(";", 1)[0]?.trim() ?? "";
+      const isInlineMedia = INLINE_MEDIA_MIME_TYPE_PATTERN.test(inlineMediaMimeType);
       const inlineDocumentMimeType =
         input.resource.disposition === "inline" &&
         extension !== null &&
@@ -394,14 +395,14 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
         version: 1,
         kind: "attachment",
         attachmentId: input.resource.attachmentId,
-        ...(isGenericFile && !isVideo && inlineDocumentMimeType === undefined
+        ...(isGenericFile && !isInlineMedia && inlineDocumentMimeType === undefined
           ? { download: true }
           : {}),
         ...(input.resource.fileName !== undefined ? { fileName: input.resource.fileName } : {}),
         ...(inlineDocumentMimeType !== undefined
           ? { mimeType: inlineDocumentMimeType }
           : input.resource.mimeType !== undefined
-            ? { mimeType: isVideo ? videoMimeType : input.resource.mimeType }
+            ? { mimeType: isInlineMedia ? inlineMediaMimeType : input.resource.mimeType }
             : {}),
         expiresAt,
       };

@@ -77,6 +77,10 @@ export function resolveMediaSource(
         : mediaMimeTypeFromExtension(basename.slice(extensionIndex));
   const mimeType = detectedMimeType ?? (input.imageEmbed ? "image/*" : null);
   if (mimeType === null) return null;
+  // Audio renders through the thread's own player. A resolved audio source
+  // here would route a plain link into the image viewer, so callers treat it
+  // as an ordinary link instead.
+  if (mimeType.startsWith("audio/")) return null;
   const kind = mimeType.startsWith("video/") ? "video" : "image";
 
   const reference =
