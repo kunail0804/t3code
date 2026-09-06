@@ -63,6 +63,7 @@ import {
   isBrowserPreviewAttachment,
   isFileAttachment,
   isImageAttachment,
+  isAudioAttachment,
   isVideoAttachment,
   type TurnDiffSummary,
 } from "../../types";
@@ -108,6 +109,7 @@ import {
 } from "./ExpandedImagePreview";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { ChangedFilesCard } from "./ChangedFilesTree";
+import { UserAudioAttachments } from "./UserAudioAttachment.fork";
 import { shouldAutoExpandChangedFiles } from "./changedFilesPresentation";
 import { CHAT_TIMELINE_ANCHOR_OFFSET } from "./timelineScrollAnchoring";
 import { MessageCopyButton } from "./MessageCopyButton";
@@ -1219,7 +1221,10 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const userImages = (row.message.attachments ?? []).filter(isImageAttachment);
   const userFiles = (row.message.attachments ?? []).filter(isFileAttachment);
   const userVideos = userFiles.filter(isVideoAttachment);
-  const otherUserFiles = userFiles.filter((file) => !isVideoAttachment(file));
+  const userAudios = userFiles.filter(isAudioAttachment);
+  const otherUserFiles = userFiles.filter(
+    (file) => !isVideoAttachment(file) && !isAudioAttachment(file),
+  );
   const unknownAttachments = (row.message.attachments ?? []).filter(
     (attachment) => !isImageAttachment(attachment) && !isFileAttachment(attachment),
   );
@@ -1280,6 +1285,9 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
               <UserVideoAttachment key={file.id} file={file} />
             ))}
           </div>
+        )}
+        {userAudios.length > 0 && (
+          <UserAudioAttachments environmentId={ctx.activeThreadEnvironmentId} files={userAudios} />
         )}
         {previewAnnotations.map((annotation, index) => (
           <UserMessagePreviewAnnotationCard

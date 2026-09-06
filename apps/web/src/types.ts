@@ -17,6 +17,7 @@ import type {
   EnvironmentThread,
   EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
+import { audioMimeType } from "@t3tools/shared/audio.fork";
 import { videoMimeType } from "@t3tools/shared/video";
 
 export { videoMimeType } from "@t3tools/shared/video";
@@ -64,6 +65,10 @@ export function isFileAttachment(attachment: ChatAttachment): attachment is Chat
 
 export function isVideoAttachment(attachment: ChatFileAttachment): boolean {
   return videoMimeType(attachment) !== null;
+}
+
+export function isAudioAttachment(attachment: ChatFileAttachment): boolean {
+  return audioMimeType(attachment) !== null;
 }
 
 export function isBrowserPreviewAttachment(attachment: ChatFileAttachment): boolean {

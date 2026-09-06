@@ -87,6 +87,7 @@ import {
 } from "./chat/ExpandedImagePreview";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { ChatMarkdownAudio } from "./ChatMarkdownAudio.fork";
+import { markdownMediaLinkInline } from "./ChatMarkdownMediaLink.fork";
 import { MediaVideoPlayer } from "./media/MediaVideoPlayer";
 import { MediaActions, type MediaActionSource } from "./media/MediaActions";
 import { resolveProtocolRelativeMediaUrl } from "./media/mediaContent";
@@ -1271,7 +1272,7 @@ function ChatMarkdownImageFallback(props: {
   );
 }
 
-function ChatMarkdownVideo(props: {
+export function ChatMarkdownVideo(props: {
   readonly src: string | null;
   readonly alt: string;
   readonly copyMarkdown: string | undefined;
@@ -2450,6 +2451,17 @@ function ChatMarkdown({
           ? (markdownFileLinkMetaByHref.get(normalizedHref) ??
             resolveMarkdownFileLinkMeta(normalizedHref, cwd, imageBaseDir ?? cwd))
           : null;
+        // A link to media the environment hosts renders the player inline;
+        // remote media stays a link (see isLocalMediaSource in the fork).
+        const inlineMedia = markdownMediaLinkInline({
+          href: normalizedHref,
+          label: plainHastText(node) ?? "",
+          copyMarkdown: `[${fileLinkMeta?.basename ?? ""}](${normalizedHref})`,
+          threadRef,
+          cwd,
+          imageBaseDir,
+        });
+        if (inlineMedia !== null) return inlineMedia;
         if (!fileLinkMeta) {
           const faviconHost = resolveExternalWebLinkHost(href);
           const pullRequestAutolink = String(

@@ -215,6 +215,10 @@
       "types": "./src/video.ts",
       "import": "./src/video.ts"
     },
+    "./audio.fork": {
+      "types": "./src/audio.fork.ts",
+      "import": "./src/audio.fork.ts"
+    },
     "./chatList": {
       "types": "./src/chatList.ts",
       "import": "./src/chatList.ts"
