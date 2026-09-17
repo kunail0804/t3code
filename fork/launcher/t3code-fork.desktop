@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=T3 Code (fork)
+Comment=Fork kunail — GUI pour agents de code, état isolé de l'app officielle
+Exec=@HOME@/.local/bin/t3code-fork %U
+Icon=t3code-fork
+Terminal=false
+Type=Application
+Categories=Development;
+StartupWMClass=t3code-fork
+MimeType=x-scheme-handler/t3code;

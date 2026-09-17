@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Lance le fork T3 Code a cote de l'installation officielle, sans conflit.
+#
+# Deux isolations, toutes par variables d'environnement — aucune ligne du
+# code de base n'est modifiee :
+#
+#   T3CODE_HOME       etat applicatif (threads, settings, secrets, DB SQLite).
+#                     L'app officielle garde ~/.t3 intact.
+#
+#   XDG_CONFIG_HOME   profil Electron. userDataDirName vaut "t3code" en dur
+#                     (DesktopEnvironment.ts:181) et ignore T3CODE_HOME, donc
+#                     sans ca le fork partagerait ~/.config/t3code — dont le
+#                     verrou single-instance tenu par le bridge Clerk
+#                     (DesktopClerk.ts:128). Le fork se contenterait alors de
+#                     reveler la fenetre de l'app officielle puis de quitter.
+#
+# La mise a jour automatique est ACTIVE : le build pose
+# T3CODE_DESKTOP_UPDATE_REPOSITORY, donc l'app-update.yml embarque pointe sur
+# les releases du fork, jamais sur celles d'upstream. Poser
+# T3CODE_DISABLE_AUTO_UPDATE=1 ici la rendrait muette (voir fork/README.md).
+#
+# electron-updater ecrase l'AppImage en place quand son nom ne contient pas de
+# numero de version (AppImageUpdater.doInstall) : T3-Code-fork.AppImage garde
+# donc son nom, mais le symlink devient un vrai fichier. Le `ln -sfn` de
+# fork/build-linux.sh le recolle au build suivant.
+set -euo pipefail
+
+FORK_HOME="$HOME/.t3-fork"
+FORK_CONFIG="$FORK_HOME/config"
+FORK_DATA="$FORK_HOME/share"
+
+mkdir -p "$FORK_CONFIG" "$FORK_DATA/applications"
+
+# Reflete un repertoire XDG par symlinks, une entree par entree, en sautant
+# celles que le fork doit posseder en propre. Rejoue a chaque lancement, donc
+# les nouveautes du vrai repertoire suivent. Une entree deja reelle cote fork
+# est laissee telle quelle : c'est ce qui rend le saut durable.
+mirror_xdg_dir() {
+  local src="$1"
+  local dst="$2"
+  local entry name skip
+  shift 2
+  while IFS= read -r -d '' entry; do
+    name="${entry##*/}"
+    for skip in "$@"; do
+      [ "$name" = "$skip" ] && continue 2
+    done
+    [ -L "$dst/$name" ] || [ ! -e "$dst/$name" ] || continue
+    ln -sfn "$entry" "$dst/$name"
+  done < <(find "$src" -mindepth 1 -maxdepth 1 -print0)
+
+  # Purge les symlinks devenus casses (entree supprimee de la source).
+  find "$dst" -maxdepth 1 -xtype l -delete 2>/dev/null || true
+}
+
+# XDG_CONFIG_HOME est herite par les CLI d'agents que le serveur lance
+# (opencode lit ~/.config/opencode, git lit ~/.config/git, ...). On reflete
+# donc tout ~/.config, sauf t3code qui est precisement ce qu'on isole, et
+# sauf mimeapps.list : l'app y enregistre le gestionnaire du schema t3code://
+# et ecrirait a travers le symlink dans le vrai fichier, volant le schema a
+# l'app officielle au profit d'un chemin d'AppImage versionne.
+mirror_xdg_dir "$HOME/.config" "$FORK_CONFIG" t3code mimeapps.list
+
+# XDG_DATA_HOME decide ou l'app ecrit son entree .desktop de gestionnaire
+# d'URL (DesktopEnvironment.ts, linuxApplicationsDir, et le chemin pre-ready
+# de DesktopPreReadyPlatform.ts). Sans cette isolation le fork ecrivait dans
+# le vrai ~/.local/share/applications, et l'entree pointait en dur sur
+# l'AppImage de la version du jour : elle survivait au build suivant en
+# designant un fichier disparu.
+#
+# `applications` est donc le seul saut : le fork ecrit ses entrees chez lui,
+# invisibles du menu. Celle qui doit rester visible, t3code-fork.desktop, est
+# posee a la main dans le vrai repertoire et pointe sur CE lanceur, donc sur
+# un chemin stable qui porte l'isolation.
+mirror_xdg_dir "$HOME/.local/share" "$FORK_DATA" applications
+
+# Un terminal ouvert DANS T3 Code hérite ELECTRON_RUN_AS_NODE=1, ce qui ferait
+# demarrer l'AppImage en simple Node au lieu d'Electron : aucune fenetre, le
+# processus attend sur stdin indefiniment. On le retire.
+#   T3CODE_DESKTOP_LINUX_APP_ID
+#                     identite que le shell de bureau lit pour grouper les
+#                     fenetres : entree .desktop et classe WM. Sans elle, les
+#                     deux builds reclament "t3code" et KDE les confond. Le
+#                     commutateur Chromium --class ne suffit pas : Electron
+#                     appelle setDesktopName au demarrage et l'ecrase.
+exec env -u ELECTRON_RUN_AS_NODE \
+  T3CODE_HOME="$FORK_HOME" \
+  XDG_CONFIG_HOME="$FORK_CONFIG" \
+  XDG_DATA_HOME="$FORK_DATA" \
+  T3CODE_DESKTOP_LINUX_APP_ID=t3code-fork \
+  T3CODE_DESKTOP_DISPLAY_NAME="T3 Code (fork)" \
+  "$HOME/Applications/T3-Code-fork.AppImage" "$@"

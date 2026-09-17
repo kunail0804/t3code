@@ -87,10 +87,43 @@ modification du code de base** :
 | `T3CODE_HOME=~/.t3-fork`            | État applicatif : threads, settings, secrets, `state.sqlite`. Initialisé par un `sqlite3 .backup` de `~/.t3/userdata`.                                                                                                                                                                                                                                                                             |
 | `XDG_CONFIG_HOME=~/.t3-fork/config` | Profil Electron. Indispensable : `userDataDirName` vaut `"t3code"` en dur (`apps/desktop/src/app/DesktopEnvironment.ts:181`) et ignore `T3CODE_HOME`. Sans ça, le fork partagerait `~/.config/t3code` — dont le verrou single-instance tenu par le bridge Clerk (`apps/desktop/src/app/DesktopClerk.ts:128`) : le fork se contenterait de révéler la fenêtre de l'app officielle, puis de quitter. |
 
-`XDG_CONFIG_HOME` est hérité par les CLI d'agents que le serveur lance
-(`opencode` lit `~/.config/opencode`, git lit `~/.config/git`). Le lanceur
-reflète donc tout `~/.config` par symlink, sauf `t3code`, et rejoue ce miroir
-à chaque démarrage.
+| `XDG_DATA_HOME=~/.t3-fork/share` | Là où l'app écrit son entrée `.desktop` de gestionnaire d'URL (`linuxApplicationsDir` dans `apps/desktop/src/app/DesktopEnvironment.ts`, et le chemin pre-ready de `apps/desktop/src/app/DesktopPreReadyPlatform.ts`). Sans ça le fork écrivait dans le vrai `~/.local/share/applications`. |
+
+`XDG_CONFIG_HOME` et `XDG_DATA_HOME` sont hérités par les CLI d'agents que le
+serveur lance (`opencode` lit `~/.config/opencode`, git lit `~/.config/git`).
+Le lanceur reflète donc les deux répertoires par symlink, entrée par entrée, et
+rejoue le miroir à chaque démarrage. Trois entrées sont sautées, et chacune pour
+une raison :
+
+| Sautée                        | Pourquoi                                                                                                    |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `~/.config/t3code`            | C'est précisément le profil Electron qu'on isole.                                                           |
+| `~/.config/mimeapps.list`     | L'app y enregistre le gestionnaire de `t3code://`. À travers un symlink elle écrivait dans le vrai fichier. |
+| `~/.local/share/applications` | Le fork y écrit son entrée de gestionnaire d'URL. Elle doit rester chez lui, invisible du menu.             |
+
+### Le schéma `t3code://`
+
+Il appartient au fork, mais **par le lanceur**, pas par l'AppImage.
+
+L'entrée visible du menu, `~/.local/share/applications/t3code-fork.desktop`, est
+posée par `fork/build-linux.sh` depuis `fork/launcher/`, et porte
+`MimeType=x-scheme-handler/t3code;` avec un `Exec` sur `~/.local/bin/t3code-fork`.
+Un chemin stable, qui survit à chaque build et qui porte l'isolation.
+
+Ce qu'il ne faut pas laisser revenir : avant l'isolation de `XDG_DATA_HOME`,
+l'app écrivait elle-même un `t3code-url-handler.desktop` dans le vrai
+répertoire, avec un `Exec` en dur sur l'AppImage de la version du jour. KDE en
+faisait le gestionnaire par défaut de la machine, et l'entrée survivait au build
+suivant en désignant un fichier disparu. `build-linux.sh` supprime ce fichier à
+chaque passage.
+
+### Le lanceur est versionné
+
+`fork/launcher/t3code-fork` et `fork/launcher/t3code-fork.desktop` sont dans le
+dépôt, et `fork/build-linux.sh` les installe à chaque build. Ils portent toute
+l'isolation : les laisser vivre uniquement dans `~/.local` échangerait un
+correctif contre un réinstall. Le lanceur n'a aucun chemin absolu ; l'entrée de
+menu porte un `@HOME@` que le build remplace.
 
 Le lanceur retire aussi `ELECTRON_RUN_AS_NODE`, hérité par tout terminal ouvert
 **dans** T3 Code. Sans ça l'AppImage démarre en simple Node : aucune fenêtre,
