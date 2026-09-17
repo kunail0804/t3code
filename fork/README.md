@@ -122,16 +122,62 @@ electron-updater, canal « latest », vient chercher.
 
 Conséquence assumée : l'updater ne verra **plus jamais** les releases upstream.
 Sans release du fork après un sync, on reste sur une vieille build en croyant
-être à jour. Le workflow `.github/workflows/fork-sync.yml` ferme ce trou : après
-chaque sync, s'il n'existe pas de release `v<version>` exploitable (publiée et
-portant les deux assets), il ouvre une issue pour le rappeler. Il ne construit
-pas d'AppImage en CI — décision prise.
+être à jour. Le workflow `.github/workflows/fork-sync.yml` ferme ce trou : chaque
+jour, s'il n'existe pas de release `v<version>` exploitable (publiée et portant
+les deux assets) pour la version que porte upstream, il ouvre une issue pour le
+rappeler. Il ne construit pas d'AppImage en CI — décision prise.
 
 Le cron de ce workflow n'est exécuté par GitHub Actions que depuis la branche
 par défaut du fork — `kunail` aujourd'hui, là où vit le fichier, et c'est
 uniquement par là qu'il fonctionne. Passer la branche par défaut à `main` (le
 réglage standard pour un miroir destiné à _Sync fork_) arrêterait le cron sans
 un bruit : ne pas le faire, ou assumer de perdre la surveillance.
+
+### Ce que GitHub Actions ne peut pas faire ici
+
+`fork-sync.yml` a longtemps essayé d'avancer `main` par `git push`. C'est
+impossible, et ce n'est pas une question de réglage : le `GITHUB_TOKEN` est un
+jeton d'application GitHub, et GitHub refuse à une application de créer ou
+modifier un fichier `.github/workflows/**` sans la permission `workflows`, qui
+n'existe pas dans le bloc `permissions:` d'un workflow. Upstream touche un
+workflow presque chaque semaine, donc le push était rejeté presque chaque jour.
+L'API `merge-upstream`, celle du bouton _Sync fork_, ne contourne rien : même
+refus en 422 (run 35241978355, 2026-09-17).
+
+Le job se contente donc de lire : le retard de `main` sur upstream, et l'état de
+la release. Deux lectures qu'aucune garde ne peut rejeter. C'est `./fork/sync.sh`,
+lancé à la main, qui pousse `main`.
+
+Pour qu'il avance `main` tout seul, il faut un jeton qui ne soit pas un jeton
+d'application : un PAT classique avec les portées `repo` et `workflow`, posé en
+secret de dépôt `FORK_SYNC_TOKEN`. Le job le détecte et bascule seul.
+
+### Les workflows d'upstream sont désactivés sur le fork
+
+Tous les workflows d'upstream visent des runners `blacksmith-*`, que le fork n'a
+pas. Leurs jobs ne démarrent jamais : ils attendent 24 h dans la file puis GitHub
+les annule. Deux d'entre eux déclarent `environment: production`, donc chaque job
+en attente créait un déploiement GitHub qui passait en `error` au bout de ces
+24 h — d'où les mails « deployment failed » :
+
+| Workflow                                       | Ce qui le déclenchait sur le fork                                 |
+| ---------------------------------------------- | ----------------------------------------------------------------- |
+| `release.yml` (`environment: production`)      | les tags du fork : `v0.0.39-fork.6` correspond au filtre `v*.*.*` |
+| `deploy-relay.yml` (`environment: production`) | chaque push sur `main`, donc chaque sync réussi                   |
+
+Tout sauf `fork sync` est désactivé sur le dépôt, **par l'API Actions et non en
+modifiant les fichiers** : un fichier de base modifié est un conflit à rejouer à
+chaque rebase, alors que l'état « disabled » vit dans les réglages du dépôt et
+survit à tous les syncs.
+
+Le trou à surveiller : un workflow qu'upstream **ajoute** plus tard arrive activé.
+Après un sync qui en amène un, rejouer :
+
+```fish
+gh api repos/kunail0804/t3code/actions/workflows -q '.workflows[] | select(.name != "fork sync") | .id' | while read -l id
+    gh api -X PUT "repos/kunail0804/t3code/actions/workflows/$id/disable"
+end
+```
 
 Détail d'installation : electron-updater garde le nom du fichier existant quand
 il n'y trouve pas de numéro de version, et `T3-Code-fork.AppImage` n'en a pas.
