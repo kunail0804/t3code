@@ -1,4 +1,4 @@
-# Fork-only : garde `main` aligné sur pingdotgg/t3code sans intervention.
+# Fork-only : surveille l'écart avec pingdotgg/t3code et la release du fork.
 # Ne touche jamais la branche de travail — le rebase reste une décision locale.
 name: fork sync
 
@@ -13,36 +13,98 @@ permissions:
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-
-      - name: Fast-forward main sur upstream
+      # Pourquoi le job ne pousse pas main avec le jeton d'Actions.
+      #
+      # Le GITHUB_TOKEN est un jeton d'application GitHub. GitHub refuse à une
+      # application de créer ou modifier un fichier `.github/workflows/**` sans
+      # la permission `workflows`, et cette permission n'existe pas dans le bloc
+      # `permissions:` d'un workflow : aucun réglage ne la débloque. Upstream
+      # touche un workflow presque chaque semaine, donc le push était rejeté
+      # presque chaque jour. Ce n'était pas un conflit de merge.
+      #
+      # L'API `merge-upstream` (le bouton « Sync fork ») ne contourne rien : le
+      # 2026-09-17, run 35241978355, elle a renvoyé le même refus en 422.
+      # Mesuré, pas supposé.
+      #
+      # Il reste un seul chemin : un jeton personnel, qui n'est pas un jeton
+      # d'application. Crée un PAT classique avec les portées `repo` et
+      # `workflow`, pose-le en secret de dépôt `FORK_SYNC_TOKEN`, et ce job
+      # avancera main tout seul. Sans le secret il se contente de mesurer le
+      # retard : c'est `./fork/sync.sh`, lancé à la main, qui pousse main.
+      - name: Aligner main sur upstream
+        env:
+          FORK_SYNC_TOKEN: ${{ secrets.FORK_SYNC_TOKEN }}
         run: |
-          git remote add upstream https://github.com/pingdotgg/t3code.git
-          git fetch upstream main --tags
-          BEHIND=$(git rev-list --count HEAD..upstream/main)
-          echo "retard: $BEHIND commits"
-          if [ "$BEHIND" -eq 0 ]; then
-            echo "deja a jour"
+          if [ -z "$FORK_SYNC_TOKEN" ]; then
+            echo "::notice::Pas de secret FORK_SYNC_TOKEN : main n'est pas avancé ici. Ce job se limite à la surveillance."
             exit 0
           fi
-          # --ff-only : si main a divergé, le job échoue au lieu d'écraser.
-          git merge --ff-only upstream/main
-          git push origin main --tags
 
-      # Le exit 0 de l'étape précédente sort de l'étape, pas du job : cette
-      # étape tourne aussi quand main est déjà à jour. Voulu — la release peut
-      # manquer même sans nouveaux commits (oubli de publication, échec local).
+          RESULT="$(GH_TOKEN="$FORK_SYNC_TOKEN" gh api -X POST \
+            "repos/$GITHUB_REPOSITORY/merge-upstream" -f branch=main 2>&1)" || {
+              echo "::error::merge-upstream a échoué : $RESULT"
+              echo "Un 409 signifie que main a divergé d'upstream. main est un miroir strict : on n'y commit jamais. Répare-le localement avant de relancer."
+              exit 1
+            }
+
+          MERGE_TYPE="$(echo "$RESULT" | jq -r '.merge_type')"
+          case "$MERGE_TYPE" in
+            fast-forward) echo "main avancé sur upstream/main" ;;
+            none)         echo "main déjà à jour" ;;
+            merge)
+              # GitHub a déjà écrit le commit de merge quand on lit ça : rien à
+              # annuler ici. Le signaler fort, parce que main n'est plus un
+              # miroir strict et que le prochain rebase de la branche de travail
+              # rejouerait des commits qui ne viennent pas d'upstream.
+              echo "::error::main a reçu un commit de merge : ce n'est plus un miroir strict d'upstream. Quelque chose a commité sur main."
+              exit 1
+              ;;
+            *)
+              echo "::error::réponse inattendue de merge-upstream : $RESULT"
+              exit 1
+              ;;
+          esac
+
+      # Les tags d'upstream ne sont pas recopiés, même avec un PAT. Ils
+      # faisaient partie du push rejeté, et leur motif `v*.*.*` est celui sous
+      # lequel `fork/release.sh` publie les releases du fork : les recopier
+      # garantit une collision le jour où les deux numéros se croisent.
+
+      - name: Mesurer le retard sur upstream
+        id: lag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          UPSTREAM="$(gh api "repos/$GITHUB_REPOSITORY" -q '.parent.full_name')"
+          FORK_MAIN="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" -q '.sha')"
+          UP_MAIN="$(gh api "repos/$UPSTREAM/commits/main" -q '.sha')"
+
+          # Comparaison faite chez upstream : main est un miroir strict, donc
+          # son commit y existe et sert de base valide.
+          BEHIND="$(gh api "repos/$UPSTREAM/compare/$FORK_MAIN...$UP_MAIN" -q '.ahead_by')"
+
+          echo "upstream: $UPSTREAM"
+          echo "retard: $BEHIND commits"
+          echo "behind=$BEHIND" >> "$GITHUB_OUTPUT"
+          echo "- \`main\` est à **$BEHIND** commits derrière \`$UPSTREAM\`" >> "$GITHUB_STEP_SUMMARY"
+
+      # Tourne aussi quand main est déjà à jour. Voulu — la release peut manquer
+      # sans nouveaux commits (oubli de publication, échec local).
+      #
+      # La version est lue chez upstream plutôt que dans un checkout de main :
+      # c'est la version que portera la prochaine build du fork, et elle reste
+      # juste même quand main du fork n'a pas encore été avancé.
       - name: Signale les versions sans release exploitable
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="$(node -p "require('./apps/server/package.json').version")"
+          UPSTREAM="$(gh api "repos/$GITHUB_REPOSITORY" -q '.parent.full_name')"
+          VERSION="$(gh api "repos/$UPSTREAM/contents/apps/server/package.json?ref=main" \
+            -H "Accept: application/vnd.github.raw+json" | jq -r '.version')"
           TAG="v$VERSION"
+          echo "version upstream : $VERSION"
 
           # Exploitable = ni brouillon ni prerelease, et porte les deux assets
           # que electron-updater vient chercher. `gh release view` reussit sur
@@ -69,8 +131,10 @@ jobs:
 
           if [ -z "$PROBLEM" ]; then
             echo "release $TAG exploitable, rien à faire"
+            echo "- release \`$TAG\` exploitable" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
+          echo "- release \`$TAG\` : $PROBLEM" >> "$GITHUB_STEP_SUMMARY"
 
           # Titre stable et contenant la version : une seule issue par version,
           # jamais un doublon à chaque exécution du cron, quel que soit le
