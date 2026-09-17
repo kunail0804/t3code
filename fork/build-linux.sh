@@ -78,6 +78,27 @@ ARTIFACT="$(check_update_metadata "$REPO_DIR/release")"
 install -d "$HOME/Applications"
 ln -sfn "$ARTIFACT" "$HOME/Applications/T3-Code-fork.AppImage"
 
+# Le lanceur et son entree de menu sont poses a chaque build, depuis
+# fork/launcher/. Ils portent toute l'isolation (T3CODE_HOME, XDG_CONFIG_HOME,
+# XDG_DATA_HOME et leurs miroirs) : les laisser vivre uniquement dans
+# ~/.local echangerait un correctif contre un reinstall.
+#
+# L'entree de menu est le gestionnaire de x-scheme-handler/t3code et pointe
+# sur le lanceur, jamais sur l'AppImage : un Exec sur le fichier versionne
+# designerait un chemin que ce build-ci fait disparaitre.
+info "Installation du lanceur et de l'entree de menu"
+install -d "$HOME/.local/bin" "$HOME/.local/share/applications"
+install -m 755 "$REPO_DIR/fork/launcher/t3code-fork" "$HOME/.local/bin/t3code-fork"
+sed "s|@HOME@|$HOME|g" "$REPO_DIR/fork/launcher/t3code-fork.desktop" \
+  > "$HOME/.local/share/applications/t3code-fork.desktop"
+
+# Le gestionnaire d'URL que les anciennes builds ecrivaient dans le vrai
+# repertoire, avant que XDG_DATA_HOME soit isole. Son Exec pointe sur une
+# AppImage versionnee, donc sur un fichier disparu des ce build.
+rm -f "$HOME/.local/share/applications/t3code-url-handler.desktop"
+command -v update-desktop-database >/dev/null &&
+  update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+
 info "Build OK : $(basename "$ARTIFACT")"
 info "Lie a ~/Applications/T3-Code-fork.AppImage"
 info "Lancer avec : t3code-fork  (ou le menu KDE : T3 Code (fork))"
