@@ -18,6 +18,7 @@ import type {
   EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
 import { videoMimeType } from "@t3tools/shared/video";
+import { forkAudioMimeType } from "./components/mediaKind.fork";
 
 export { videoMimeType } from "@t3tools/shared/video";
 
@@ -71,6 +72,10 @@ export function isFileAttachment(attachment: ChatAttachment): attachment is Chat
 
 export function isVideoAttachment(attachment: ChatFileAttachment): boolean {
   return videoMimeType(attachment) !== null;
+}
+
+export function isAudioAttachment(attachment: ChatFileAttachment): boolean {
+  return forkAudioMimeType(attachment) !== null;
 }
 
 export interface ChatMessage extends Omit<OrchestrationMessage, "attachments"> {

@@ -18,7 +18,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { downloadMedia, readMediaPng } from "./mediaContent";
 
 export interface MediaActionSource {
-  readonly kind: "image" | "video";
+  readonly kind: "image" | "audio" | "video";
   readonly name: string;
   readonly src: string | null;
   readonly reference?: MediaReference;
@@ -91,7 +91,7 @@ export function MediaActions({
     let failureTitle = "Could not open media menu";
     let progressToast: ReturnType<typeof toastManager.add> | undefined;
     try {
-      const noun = source.kind === "image" ? "image" : "video";
+      const noun = source.kind === "image" ? "image" : source.kind === "audio" ? "audio" : "video";
       const unavailable = source.src === null && source.asset === undefined;
       const canCopyImage =
         typeof navigator !== "undefined" &&
