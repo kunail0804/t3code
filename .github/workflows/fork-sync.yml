@@ -8,6 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: write
   issues: write
 
@@ -71,6 +72,45 @@ jobs:
       # faisaient partie du push rejeté, et leur motif `v*.*.*` est celui sous
       # lequel `fork/release.sh` publie les releases du fork : les recopier
       # garantit une collision le jour où les deux numéros se croisent.
+
+      # Un workflow d'upstream ne peut pas tourner ici : ils visent tous des
+      # runners `blacksmith-*` que le fork n'a pas. Leurs jobs attendent 24 h
+      # dans la file puis sont annules, et ceux qui declarent
+      # `environment: production` laissent derriere eux un deploiement en
+      # erreur — la vague de mails « deployment failed » du 2026-09.
+      #
+      # Ils sont desactives dans les reglages du depot plutot que dans les
+      # fichiers : modifier un fichier de base coute un conflit a chaque
+      # rebase, l'etat « disabled » survit a tous les syncs.
+      #
+      # Sauf qu'un workflow qu'upstream ajoute ou renomme se reenregistre comme
+      # neuf, donc actif. C'est arrive au premier sync : `release.yml` est
+      # devenu `release-desktop.yml` et `desktop-macos-preview.yml` est devenu
+      # `desktop-macos-preview-publish.yml`, tous deux actifs. Cette etape
+      # ferme le trou au lieu de compter sur quelqu'un pour y penser.
+      #
+      # `dynamic/` est le workflow Dependabot du graphe de dependances : il
+      # n'est pas un fichier du depot et l'API refuse de le desactiver (422).
+      # Il ne cree pas de deploiement, on le laisse.
+      - name: Desactiver les workflows d'upstream reapparus
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows" --paginate \
+            -q '.workflows[] | select(.state == "active") | select(.name != "fork sync") | select(.path | startswith("dynamic/") | not) | "\(.id)|\(.name)"' \
+            > /tmp/active-workflows.txt
+
+          if [ ! -s /tmp/active-workflows.txt ]; then
+            echo "aucun workflow d'upstream actif"
+            exit 0
+          fi
+
+          while IFS='|' read -r id name; do
+            [ -z "$id" ] && continue
+            echo "::warning::Workflow d'upstream actif sur le fork, desactive : $name"
+            gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/$id/disable"
+            echo "- desactive : \`$name\`" >> "$GITHUB_STEP_SUMMARY"
+          done < /tmp/active-workflows.txt
 
       - name: Mesurer le retard sur upstream
         id: lag
