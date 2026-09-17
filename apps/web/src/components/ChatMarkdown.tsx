@@ -52,6 +52,9 @@ import {
 import { inlineCodeFilePathCandidate } from "@t3tools/client-runtime/markdown-links";
 import { mediaFileReference, mediaUrlReference } from "@t3tools/client-runtime/media-reference";
 import { mediaKindFromPath, mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
+import { ChatMarkdownAudio } from "./ChatMarkdownAudio.fork";
+import { markdownMediaLinkInline } from "./ChatMarkdownMediaLink.fork";
+import { forkMediaKindFromPath, type ForkMediaKind } from "./mediaKind.fork";
 import * as Cause from "effect/Cause";
 import { sourceControlRepositorySelector } from "@t3tools/shared/sourceControl";
 import { AsyncResult } from "effect/unstable/reactivity";
@@ -1360,9 +1363,14 @@ function expandableMarkdownImageProps(
 
 function ChatMarkdownMediaUnavailableLabel(props: {
   readonly alt: string;
-  readonly kind?: "image" | "video" | undefined;
+  readonly kind?: ForkMediaKind | undefined;
 }) {
-  const label = props.kind === "video" ? "Video unavailable" : "Image unavailable";
+  const label =
+    props.kind === "video"
+      ? "Video unavailable"
+      : props.kind === "audio"
+        ? "Audio unavailable"
+        : "Image unavailable";
   return (
     <span className="inline-flex items-center gap-1.5">
       <TriangleAlertIcon aria-hidden className="size-3.5 shrink-0" />
@@ -1375,7 +1383,7 @@ function ChatMarkdownMediaUnavailableLabel(props: {
 function ChatMarkdownImageFallback(props: {
   readonly alt: string;
   readonly copyMarkdown?: string | undefined;
-  readonly kind?: "image" | "video";
+  readonly kind?: ForkMediaKind;
   readonly actionsSource?: MediaActionSource | undefined;
 }) {
   const content = (
@@ -1538,7 +1546,7 @@ function ChatMarkdownImage(props: {
   );
 }
 
-function ChatMarkdownVideo(props: {
+export function ChatMarkdownVideo(props: {
   readonly src: string | null;
   readonly alt: string;
   readonly copyMarkdown: string | undefined;
@@ -1580,7 +1588,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
     AssetResource,
     { readonly _tag: "attachment" | "workspace-file" | "media-file" | "github-media" }
   >;
-  readonly kind?: "image" | "video";
+  readonly kind?: ForkMediaKind;
   readonly alt: string;
   readonly copyMarkdown?: string;
   readonly srcFragment?: string;
@@ -1668,6 +1676,20 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
         copyMarkdown={props.copyMarkdown}
         originalUrl={props.originalUrl}
         style={props.style}
+        mediaIdentity={JSON.stringify([props.environmentId, props.resource, props.srcFragment])}
+        onRetry={refreshAssetUrl}
+        actionsSource={actionsSource}
+      />
+    );
+  }
+
+  if (props.kind === "audio") {
+    return (
+      <ChatMarkdownAudio
+        src={src}
+        sourceFailed={assetUrl._tag === "Failure" && fallbackSrc === undefined}
+        alt={props.alt}
+        copyMarkdown={props.copyMarkdown}
         mediaIdentity={JSON.stringify([props.environmentId, props.resource, props.srcFragment])}
         onRetry={refreshAssetUrl}
         actionsSource={actionsSource}
@@ -2871,6 +2893,17 @@ const CHAT_MARKDOWN_COMPONENTS = {
       ? (markdownFileLinkMetaByHref.get(normalizedHref) ??
         resolveMarkdownFileLinkMeta(normalizedHref, cwd, imageBaseDir ?? cwd))
       : null;
+    // A link to media the environment hosts renders the player inline; remote
+    // media stays a link (see isLocalMediaSource in the fork).
+    const inlineMedia = markdownMediaLinkInline({
+      href: normalizedHref,
+      label: plainHastText(node) ?? "",
+      copyMarkdown: `[${fileLinkMeta?.basename ?? ""}](${normalizedHref})`,
+      threadRef,
+      cwd,
+      imageBaseDir,
+    });
+    if (inlineMedia !== null) return inlineMedia;
     if (!fileLinkMeta) {
       const faviconHost = resolveExternalWebLinkHost(href);
       const pullRequestAutolink = String(
@@ -3152,7 +3185,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const { className, style: _style, width, height, ...imageProps } = props;
     const authoredSizeStyle = authoredImageSizeStyle(width, height);
     const imageSource = classifyMarkdownImageSource(classifiedSrc, imageBaseDir ?? cwd);
-    const kind = mediaKindFromPath(classifiedSrc) ?? "image";
+    const kind = forkMediaKindFromPath(classifiedSrc) ?? "image";
     const directUri = imageSource._tag === "Direct" ? imageSource.uri : null;
     const githubMediaUrl =
       directUri === null ? null : githubMediaFetchUrl(resolveProtocolRelativeMediaUrl(directUri));
@@ -3200,6 +3233,18 @@ const CHAT_MARKDOWN_COMPONENTS = {
       if (kind === "video") {
         return (
           <ChatMarkdownVideo
+            src={mediaSrc}
+            alt={altText}
+            copyMarkdown={copyMarkdown}
+            originalUrl={originalUrl}
+            style={authoredSizeStyle}
+            actionsSource={actionsSource}
+          />
+        );
+      }
+      if (kind === "audio") {
+        return (
+          <ChatMarkdownAudio
             src={mediaSrc}
             alt={altText}
             copyMarkdown={copyMarkdown}

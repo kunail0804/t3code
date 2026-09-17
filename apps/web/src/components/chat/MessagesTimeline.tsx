@@ -93,6 +93,7 @@ import {
   type ChatImageAttachment,
   isFileAttachment,
   isImageAttachment,
+  isAudioAttachment,
   isVideoAttachment,
   type TurnDiffSummary,
 } from "../../types";
@@ -151,6 +152,7 @@ import {
 } from "./SnapShotAttachmentDetails";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { ChangedFilesCard } from "./ChangedFilesTree";
+import { UserAudioAttachments } from "./UserAudioAttachment.fork";
 import {
   CHAT_TIMELINE_ANCHOR_OFFSET,
   readTimelinePosition,
@@ -1953,7 +1955,10 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     [row.message.attachments],
   );
   const userVideos = userFiles.filter(isVideoAttachment);
-  const otherUserFiles = userFiles.filter((file) => !isVideoAttachment(file));
+  const userAudios = userFiles.filter(isAudioAttachment);
+  const otherUserFiles = userFiles.filter(
+    (file) => !isVideoAttachment(file) && !isAudioAttachment(file),
+  );
   const unknownAttachments = (row.message.attachments ?? []).filter(
     (attachment) => !isImageAttachment(attachment) && !isFileAttachment(attachment),
   );
@@ -2127,6 +2132,9 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
               <UserVideoAttachment key={file.id} file={file} />
             ))}
           </div>
+        )}
+        {userAudios.length > 0 && (
+          <UserAudioAttachments environmentId={ctx.activeThreadEnvironmentId} files={userAudios} />
         )}
         {unchippedFiles.length > 0 || unknownAttachments.length > 0 ? (
           <div className="mb-2 flex flex-col gap-1">
