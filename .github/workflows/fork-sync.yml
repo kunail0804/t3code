@@ -130,79 +130,84 @@ jobs:
           echo "behind=$BEHIND" >> "$GITHUB_OUTPUT"
           echo "- \`main\` est à **$BEHIND** commits derrière \`$UPSTREAM\`" >> "$GITHUB_STEP_SUMMARY"
 
-      # Tourne aussi quand main est déjà à jour. Voulu — la release peut manquer
-      # sans nouveaux commits (oubli de publication, échec local).
+      # Tourne aussi quand main est déjà à jour : une release peut manquer ou
+      # être cassée sans nouveau commit.
       #
-      # La version est lue chez upstream plutôt que dans un checkout de main :
-      # c'est la version que portera la prochaine build du fork, et elle reste
-      # juste même quand main du fork n'a pas encore été avancé.
-      - name: Signale les versions sans release exploitable
+      # Jusqu'au 2026-09-23, cette étape vérifiait seulement qu'une release
+      # portait le numéro de version d'upstream. Upstream a empilé 240 commits
+      # sous 0.0.42 et elle répondait « rien à faire ». Elle compte maintenant
+      # des commits, pas des numéros, et tient une seule issue à jour : ouverte
+      # quand il faut agir, fermée seule quand tout est rattrapé.
+      - name: Signale un fork en retard ou une release inexploitable
         env:
           GH_TOKEN: ${{ github.token }}
+          # Seuil d'ouverture de l'issue. Upstream pousse de l'ordre de 40
+          # commits par jour en septembre 2026 : 100, c'est environ trois jours.
+          MAX_LAG: "100"
         run: |
-          UPSTREAM="$(gh api "repos/$GITHUB_REPOSITORY" -q '.parent.full_name')"
-          VERSION="$(gh api "repos/$UPSTREAM/contents/apps/server/package.json?ref=main" \
-            -H "Accept: application/vnd.github.raw+json" | jq -r '.version')"
-          TAG="v$VERSION"
-          echo "version upstream : $VERSION"
+          REPO="$GITHUB_REPOSITORY"
+          WORK="$(gh api "repos/$REPO" -q '.default_branch')"
+          FINDINGS=""
+          add() { FINDINGS="${FINDINGS}- $1"$'\n'; }
 
-          # Exploitable = ni brouillon ni prerelease, et porte les deux assets
-          # que electron-updater vient chercher. `gh release view` reussit sur
-          # une release brouillon ou sans assets : un `gh release create`
-          # interrompu pendant l'upload laisserait sinon la surveillance
-          # se taire pour toujours.
-          PROBLEM=""
-          if INFO="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,assets 2>/dev/null)"; then
-            DRAFT="$(echo "$INFO" | jq -r '.isDraft')"
-            PRERELEASE="$(echo "$INFO" | jq -r '.isPrerelease')"
+          # 1. La branche de travail rejoue-t-elle main ?
+          WORK_LAG="$(gh api "repos/$REPO/compare/$WORK...main" -q '.ahead_by')"
+          echo "$WORK en retard sur main : $WORK_LAG commits"
+          if [ "$WORK_LAG" -ge "$MAX_LAG" ]; then
+            add "\`$WORK\` a **$WORK_LAG** commits de retard sur \`main\` : il faut rebaser (\`./fork/sync.sh\`)."
+          fi
+
+          # 2. La dernière release est-elle complète, et sur quelle base ?
+          # Sans tag, `gh release view` rend la release « latest » de GitHub,
+          # qui exclut brouillons et prereleases : exactement celle que lit
+          # l'updater. release.sh écrit « base upstream <sha> » dans ses notes.
+          if INFO="$(gh release view --repo "$REPO" --json tagName,assets,body 2>/dev/null)"; then
+            TAG="$(echo "$INFO" | jq -r '.tagName')"
+            VERSION="${TAG#v}"
             HAS_APPIMAGE="$(echo "$INFO" | jq -r --arg a "T3-Code-$VERSION-x86_64.AppImage" '[.assets[].name] | index($a) != null')"
             HAS_YML="$(echo "$INFO" | jq -r '[.assets[].name] | index("latest-linux.yml") != null')"
-            if [ "$DRAFT" = "true" ]; then
-              PROBLEM="elle est en brouillon, et l'updater ne voit pas les brouillons"
-            elif [ "$PRERELEASE" = "true" ]; then
-              PROBLEM="elle est marquee prerelease, et l'updater (canal latest) ne la voit pas"
-            elif [ "$HAS_APPIMAGE" != "true" ] || [ "$HAS_YML" != "true" ]; then
-              PRESENT="$(echo "$INFO" | jq -r '[.assets[].name] | if length == 0 then "aucun" else join(", ") end')"
-              PROBLEM="elle existe mais il lui manque des assets (attendus : T3-Code-$VERSION-x86_64.AppImage et latest-linux.yml ; presents : $PRESENT). Une release a moitie creee est une release cassee : l'updater telechargerait un 404"
+            if [ "$HAS_APPIMAGE" != "true" ] || [ "$HAS_YML" != "true" ]; then
+              add "La release \`$TAG\` n'a pas ses deux assets (\`T3-Code-$VERSION-x86_64.AppImage\` et \`latest-linux.yml\`) : l'updater téléchargerait un 404."
+            fi
+            BASE="$(echo "$INFO" | jq -r '.body' | sed -nE 's/.*base upstream ([0-9a-f]{7,40}).*/\1/p' | head -1)"
+            if [ -n "$BASE" ] && RELEASE_LAG="$(gh api "repos/$REPO/compare/$BASE...main" -q '.ahead_by' 2>/dev/null)"; then
+              echo "release $TAG : base upstream $BASE, $RELEASE_LAG commits derrière main"
+              if [ "$RELEASE_LAG" -ge "$MAX_LAG" ]; then
+                add "La release \`$TAG\` est construite sur une base qui a **$RELEASE_LAG** commits de retard : il faut reconstruire puis publier (\`./fork/build-linux.sh\`, puis \`./fork/release.sh\`)."
+              fi
+            else
+              add "Les notes de la release \`$TAG\` n'indiquent pas de base upstream lisible : son retard ne peut pas être mesuré."
             fi
           else
-            PROBLEM="elle n'existe pas"
+            add "Aucune release publiée : l'updater du fork ne propose rien."
           fi
 
-          if [ -z "$PROBLEM" ]; then
-            echo "release $TAG exploitable, rien à faire"
-            echo "- release \`$TAG\` exploitable" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          echo "- release \`$TAG\` : $PROBLEM" >> "$GITHUB_STEP_SUMMARY"
+          TITLE="Fork en retard sur upstream : sync ou release à faire"
+          NUMBER="$(gh issue list --repo "$REPO" --state open --limit 500 --json number,title \
+            --jq "[.[] | select(.title == \"$TITLE\")][0].number // empty")"
 
-          # Titre stable et contenant la version : une seule issue par version,
-          # jamais un doublon à chaque exécution du cron, quel que soit le
-          # problème constaté.
-          TITLE="Release $TAG absente ou incomplete : mise à jour automatique en attente"
-          COUNT="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 500 \
-            --json title --jq "[.[] | select(.title == \"$TITLE\")] | length")"
-
-          if [ "$COUNT" -ne 0 ]; then
-            echo "une issue ouverte signale déjà $TAG"
+          if [ -z "$FINDINGS" ]; then
+            echo "rien à signaler"
+            echo "- rien à signaler" >> "$GITHUB_STEP_SUMMARY"
+            if [ -n "$NUMBER" ]; then
+              gh issue close "$NUMBER" --repo "$REPO" \
+                --comment "Rattrapé : branche de travail et release à moins de $MAX_LAG commits de \`main\`."
+            fi
             exit 0
           fi
 
-          cat > /tmp/fork-release-issue.md <<'EOF'
-          La release `v$VERSION` ne satisfait pas les conditions de la mise à jour automatique du fork : $PROBLEM.
+          printf '%s' "$FINDINGS" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "Relevé du $(date -u +%Y-%m-%d) :"
+            echo
+            printf '%s\n' "$FINDINGS"
+            echo "Procédure, depuis la machine de dev : \`./fork/sync.sh\`, puis \`./fork/build-linux.sh\`, puis \`./fork/release.sh\`."
+            echo
+            echo "Cette issue est réécrite à chaque passage et se ferme seule quand tout est rattrapé."
+          } > /tmp/fork-issue.md
 
-          Depuis que l'updater des AppImages du fork pointe sur les releases du fork, il ne voit plus celles d'upstream : sans release exploitable du fork, il ne propose plus aucune mise à jour, et on reste sur une vieille build en croyant être à jour.
-
-          Pour produire la release, depuis une machine de dev :
-
-          1. `./fork/sync.sh` — resynchroniser sur upstream
-          2. `./fork/build-linux.sh` — construire l'AppImage et ses métadonnées de mise à jour
-          3. `./fork/release.sh` — publier la release GitHub
-
-          Ce workflow ne construit pas d'AppImage en CI : la publication est une étape locale et volontaire.
-          EOF
-          sed -i -e "s|\$VERSION|$VERSION|g" -e "s|\$PROBLEM|$PROBLEM|g" /tmp/fork-release-issue.md
-
-          gh issue create --repo "$GITHUB_REPOSITORY" \
-            --title "$TITLE" \
-            --body-file /tmp/fork-release-issue.md
+          if [ -n "$NUMBER" ]; then
+            gh issue edit "$NUMBER" --repo "$REPO" --body-file /tmp/fork-issue.md
+          else
+            gh issue create --repo "$REPO" --title "$TITLE" --body-file /tmp/fork-issue.md
+          fi

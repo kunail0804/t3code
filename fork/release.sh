@@ -8,7 +8,7 @@
 # .../releases/latest et deduit la version du tag.
 #
 # Variables :
-#   T3CODE_DESKTOP_VERSION        version a publier (defaut : apps/server/package.json)
+#   T3CODE_DESKTOP_VERSION        version a publier (defaut : celle de latest-linux.yml, fixee au build)
 #   T3CODE_FORK_RELEASE_DIR       repertoire des artefacts (defaut : <repo>/release)
 #   T3CODE_FORK_RELEASE_CLOBBER=1 remplace les assets si la release existe deja
 #   T3CODE_FORK_RELEASE_DRY_RUN=1 verifie tout, affiche la commande gh, n'appelle rien
@@ -25,9 +25,10 @@ CLOBBER="${T3CODE_FORK_RELEASE_CLOBBER:-0}"
 RELEASE_DIR="${T3CODE_FORK_RELEASE_DIR:-$REPO_DIR/release}"
 
 VERSION="${T3CODE_DESKTOP_VERSION:-}"
-if [ -z "$VERSION" ]; then
-  VERSION="$(node -p "require('$REPO_DIR/apps/server/package.json').version")"
+if [ -z "$VERSION" ] && [ -f "$RELEASE_DIR/latest-linux.yml" ]; then
+  VERSION="$(awk '$1 == "version:" {print $2; exit}' "$RELEASE_DIR/latest-linux.yml" | tr -d '\r' | sed 's/[[:space:]]*$//')"
 fi
+[ -n "$VERSION" ] || die "Aucune version a publier : latest-linux.yml absent de $RELEASE_DIR. Lance ./fork/build-linux.sh d'abord."
 info "Version a publier : $VERSION"
 
 APPIMAGE="$RELEASE_DIR/T3-Code-$VERSION-x86_64.AppImage"

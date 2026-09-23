@@ -148,17 +148,24 @@ publication d'electron-builder, qui embarque alors `app-update.yml` et produit
 et refuse de finir sinon.
 
 Le cycle est : `sync.sh` → `build-linux.sh` → `release.sh`. La release doit être
-publiée (ni brouillon ni prerelease), tagguée `v<version>` où `<version>` est le
-champ `version` de `apps/server/package.json`, et porter les deux assets
-`T3-Code-<version>-x86_64.AppImage` et `latest-linux.yml` : c'est ce que
+publiée (ni brouillon ni prerelease), tagguée `v<version>`, et porter les deux
+assets `T3-Code-<version>-x86_64.AppImage` et `latest-linux.yml` : c'est ce que
 electron-updater, canal « latest », vient chercher.
+
+Le numéro vient de `fork/version.sh` : patch d'upstream + 1, suffixe
+`-fork.<n>` (upstream 0.0.42 → `0.0.43-fork.1`, `0.0.43-fork.2`…). Le numéro
+d'upstream seul ne suffit pas : upstream peut empiler des centaines de commits
+sous le même numéro, et l'updater ne propose rien d'un numéro vers lui-même. Le
+patch monte parce que semver classe `0.0.42-fork.1` sous `0.0.42`.
+`build-linux.sh` fixe le numéro, `release.sh` le relit dans `latest-linux.yml`.
 
 Conséquence assumée : l'updater ne verra **plus jamais** les releases upstream.
 Sans release du fork après un sync, on reste sur une vieille build en croyant
 être à jour. Le workflow `.github/workflows/fork-sync.yml` ferme ce trou : chaque
-jour, s'il n'existe pas de release `v<version>` exploitable (publiée et portant
-les deux assets) pour la version que porte upstream, il ouvre une issue pour le
-rappeler. Il ne construit pas d'AppImage en CI — décision prise.
+jour il compte le retard de `kunail` sur `main` et celui de la base de la
+dernière release, vérifie ses deux assets, et tient à jour une seule issue,
+ouverte au-delà de 100 commits de retard et fermée seule une fois rattrapé. Il
+ne construit pas d'AppImage en CI — décision prise.
 
 Le cron de ce workflow n'est exécuté par GitHub Actions que depuis la branche
 par défaut du fork — `kunail` aujourd'hui, là où vit le fichier, et c'est

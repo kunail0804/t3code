@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Construit l'AppImage du fork et l'installe comme "T3 Code (fork)".
 #
-# Contourne la toolchain rustup orpheline (1.94.1) qui masque le rustc
-# systeme dans le PATH : le composant natif resource-monitor exige >= 1.95.
+# Met le rustc systeme en tete du PATH : le composant natif resource-monitor
+# exige >= 1.95, et une toolchain rustup orpheline l'a deja masque ici.
 #
 # Pose T3CODE_DESKTOP_UPDATE_REPOSITORY pour que electron-builder embarque
 # app-update.yml dans l'AppImage et produise latest-linux.yml : sans eux,
@@ -24,6 +24,13 @@ export PATH
 T3CODE_DESKTOP_UPDATE_REPOSITORY="${T3CODE_DESKTOP_UPDATE_REPOSITORY:-kunail0804/t3code}"
 export T3CODE_DESKTOP_UPDATE_REPOSITORY
 info "Depot de mise a jour : $T3CODE_DESKTOP_UPDATE_REPOSITORY"
+
+# Numero de la build, calcule par fork/version.sh et lu par
+# scripts/build-desktop-artifact.ts. C'est la build qui fixe le numero :
+# release.sh le reprend dans latest-linux.yml au lieu de le recalculer.
+T3CODE_DESKTOP_VERSION="${T3CODE_DESKTOP_VERSION:-$("$REPO_DIR/fork/version.sh")}"
+export T3CODE_DESKTOP_VERSION
+info "Version de la build : $T3CODE_DESKTOP_VERSION"
 
 # Identite Linux de la build. Nomme le binaire empaquete et le StartupWMClass
 # de son entree .desktop. Sans ca le binaire s'appelle "t3code" comme celui de
